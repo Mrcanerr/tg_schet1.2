@@ -5,7 +5,6 @@ from aiogram.utils import executor
 from openpyxl import load_workbook
 from parser import parse_inventory, find_similar
 
-
 TOKEN = "8464230833:AAHuVdH301Oh2vNEplUpYPHlWLYtlQEBZzk"
 
 logging.basicConfig(level=logging.INFO)
@@ -13,21 +12,15 @@ logging.basicConfig(level=logging.INFO)
 bot = Bot(token=TOKEN)
 dp = Dispatcher(bot)
 
-waiting_for_text = {}
+state_users = {}
 miss_data = {}
 
-
-
-btn_upload = KeyboardButton("Загрузить файл")
-btn_report = KeyboardButton("Получить отчет")
-btn_format = KeyboardButton("Я еблан")
-btn_miss = KeyboardButton("Показать несовпадения")
+-
 
 markup = ReplyKeyboardMarkup(resize_keyboard=True)
-markup.add(btn_upload)
-markup.add(btn_report)
-markup.add(btn_format)
-markup.add(btn_miss)
+markup.add("Загрузить таблицу программы")
+markup.add("Получить отчет")
+markup.add("Показать несовпадения")
 
 
 
@@ -40,68 +33,75 @@ async def start(message: types.Message):
 
 
 
-@dp.message_handler(lambda message: message.text == "Я ебланище")
-async def how_file(message: types.Message):
-    await message.answer(
-        "Excel файл должен содержать:\n\n"
-        "Колонка A — Название товара\n"
-        "Колонка B — Количество (план)\n\n"
-        "Без пустых строк между товарами."
-    )
+@dp.message_handler(lambda m: m.text == "Загрузить таблицу программы")
+async def request_file(message: types.Message):
+    state_users[message.from_user.id] = "waiting_program"
+    await message.answer("Отправьте таблицу из программы (xlsx)")
 
 
-
-@dp.message_handler(lambda message: message.text == "Загрузить файл")
-async def upload_request(message: types.Message):
-    await message.answer("Отправьте Excel файл (.xlsx)")
 
 @dp.message_handler(content_types=types.ContentType.DOCUMENT)
-async def handle_file(message: types.Message):
-    if not message.document.file_name.endswith(".xlsx"):
-        await message.answer("Нужен файл формата .xlsx")
+async def handle_excel(message: types.Message):
+
+    user_state = state_users.get(message.from_user.id)
+
+    if user_state != "waiting_program":
         return
 
     file = await bot.get_file(message.document.file_id)
-    await bot.download_file(file.file_path, "tabl0.xlsx")
+    await bot.download_file(file.file_path, "program.xlsx")
 
-    waiting_for_text[message.from_user.id] = True
+    base_wb = load_workbook("tabl0.xlsx")
+    base_ws = base_wb.active
 
-    await message.answer("Файл получен.\nТеперь отправь фактические остатки списком.")
+    prog_wb = load_workbook("program.xlsx")
+    prog_ws = prog_wb.active
+
+    program_data = {}
+
+    for row in range(2, prog_ws.max_row + 1):
+        name = str(prog_ws[f"A{row}"].value).lower()
+        qty = prog_ws[f"B{row}"].value or 0
+        program_data[name] = qty
+
+    for row in range(2, base_ws.max_row + 1):
+        product_name = str(base_ws[f"A{row}"].value).lower()
+        if product_name in program_data:
+            base_ws[f"B{row}"] = program_data[product_name]
+
+    base_wb.save("work.xlsx")
+
+    state_users[message.from_user.id] = "waiting_fact"
+
+    await message.answer("Таблица принята.\nТеперь отправь фактические остатки списком.")
 
 
 
-@dp.message_handler(content_types=types.ContentType.TEXT)
-async def handle_inventory_text(message: types.Message):
-
-    if message.from_user.id not in waiting_for_text:
-        return
+@dp.message_handler(lambda message: state_users.get(message.from_user.id) == "waiting_fact")
+async def handle_fact(message: types.Message):
 
     data = parse_inventory(message.text)
 
-    wb = load_workbook("tabl0.xlsx")
+    wb = load_workbook("work.xlsx")
     ws = wb.active
-
-    matches = 0
-    misses = []
 
     table_products = []
 
     for row in range(2, ws.max_row + 1):
-        product_name = str(ws[f"A{row}"].value).lower()
-        table_products.append(product_name)
+        table_products.append(str(ws[f"A{row}"].value).lower())
+
+    misses = []
 
     for name, qty in data.items():
 
         found_row = None
 
-        
         for row in range(2, ws.max_row + 1):
             product_name = str(ws[f"A{row}"].value).lower()
             if name == product_name:
                 found_row = row
                 break
 
-       
         if not found_row:
             similar = find_similar(name, table_products)
             if similar:
@@ -114,31 +114,24 @@ async def handle_inventory_text(message: types.Message):
             ws[f"C{found_row}"] = qty
             plan = ws[f"B{found_row}"].value or 0
             ws[f"D{found_row}"] = plan - qty
-            matches += 1
         else:
             misses.append(name)
 
     wb.save("report.xlsx")
 
     miss_data[message.from_user.id] = misses
-    waiting_for_text.pop(message.from_user.id)
+    state_users[message.from_user.id] = None
 
-    await message.answer(
-        f"Готово.\n"
-        f"Совпадений найдено: {matches}\n"
-        f"Несовпадений: {len(misses)}\n\n"
-        f"Нажмите 'Получить отчет'"
-    )
+    await message.answer("Факт принят. Нажмите 'Получить отчет'")
 
 
 
 @dp.message_handler(lambda message: message.text == "Получить отчет")
 async def send_report(message: types.Message):
     try:
-        file = InputFile("report.xlsx")
-        await message.answer_document(file)
+        await message.answer_document(InputFile("report.xlsx"))
     except:
-        await message.answer("Сначала загрузи файл и отправьте остатки.")
+        await message.answer("Сначала загрузите таблицу.")
 
 
 
@@ -151,9 +144,7 @@ async def show_miss(message: types.Message):
         await message.answer("Несовпадений нет.")
         return
 
-    text = "Не найдено в таблице:\n\n"
-    text += "\n".join(misses)
-
+    text = "Не найдено:\n\n" + "\n".join(misses)
     await message.answer(text)
 
 
