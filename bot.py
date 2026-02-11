@@ -16,30 +16,30 @@ dp = Dispatcher(bot)
 user_state = {}
 user_miss = {}
 
-# ================= КНОПКИ =================
+
 
 keyboard = ReplyKeyboardMarkup(resize_keyboard=True)
 keyboard.add("Загрузить таблицу программы")
 keyboard.add("Получить отчет")
-keyboard.add("Показать несовпадения")
+keyboard.add("Я еблан - покажи несовподения")
 
-# ================= START =================
+
 
 @dp.message_handler(commands=['start'])
 async def start(message: types.Message):
     await message.answer(
-        "Привет. Я бот учета.\nВыбери действие:",
+        "Привет. Я бот учета.\nВыбери действие уёбище:",
         reply_markup=keyboard
     )
 
-# ================= КНОПКА ЗАГРУЗКИ =================
 
-@dp.message_handler(lambda m: m.text == "Загрузить таблицу программы")
+
+@dp.message_handler(lambda m: m.text == "Пожалуйста о господин примите мою петицию")
 async def request_program(message: types.Message):
     user_state[message.from_user.id] = "waiting_program"
-    await message.answer("Отправьте Excel файл (.xlsx) из программы")
+    await message.answer("Отправь Excel файл (.xlsx) из программы чернь")
 
-# ================= ПРИЁМ ФАЙЛА =================
+
 
 @dp.message_handler(content_types=['document'])
 async def handle_excel(message: types.Message):
@@ -49,17 +49,17 @@ async def handle_excel(message: types.Message):
 
     document = message.document
 
-    # ❗ ВТОРАЯ ВОЗМОЖНАЯ ПРИЧИНА — ФАЙЛ НЕ ТОГО ФОРМАТА
+    
     if not document.file_name.endswith(".xlsx"):
-        await message.answer("Нужен файл формата .xlsx")
+        await message.answer("еболай проверь .xlsx")
         return
 
     file = await bot.get_file(document.file_id)
     await bot.download_file(file.file_path, "program.xlsx")
 
-    # ❗ ЕСЛИ НЕТ tabl0.xlsx — создаём ошибку понятную
+    
     if not os.path.exists("tabl0.xlsx"):
-        await message.answer("Ошибка: tabl0.xlsx отсутствует в проекте")
+        await message.answer("Ошибка: мать сдохла")
         return
 
     base_wb = load_workbook("tabl0.xlsx")
@@ -70,7 +70,7 @@ async def handle_excel(message: types.Message):
 
     program_data = {}
 
-    # ❗ ЧИСТИМ НАЗВАНИЯ (ОБЯЗАТЕЛЬНО)
+    
     for row in prog_ws.iter_rows(min_row=1, values_only=True):
         if row[0] and row[1]:
             name = str(row[0]).strip().lower()
@@ -87,9 +87,9 @@ async def handle_excel(message: types.Message):
 
     user_state[message.from_user.id] = "waiting_fact"
 
-    await message.answer("Файл принят.\nТеперь отправьте фактические остатки списком.")
+    await message.answer("Ага, вон че\nТеперь факт пиши")
 
-# ================= ПРИЁМ ФАКТА =================
+
 
 @dp.message_handler(lambda m: user_state.get(m.from_user.id) == "waiting_fact")
 async def handle_fact(message: types.Message):
@@ -137,34 +137,34 @@ async def handle_fact(message: types.Message):
     user_miss[message.from_user.id] = misses
     user_state[message.from_user.id] = None
 
-    await message.answer("Факт принят.\nНажмите 'Получить отчет'")
+    await message.answer("Факт принят.\nПолучай отчет чернь")
 
-# ================= ОТЧЕТ =================
+
 
 @dp.message_handler(lambda m: m.text == "Получить отчет")
 async def send_report(message: types.Message):
 
     if not os.path.exists("report.xlsx"):
-        await message.answer("Сначала загрузите таблицу и введите факт")
+        await message.answer("ЕБЛАНИЩЕЕЕЕЕЕЕЕЕЕЕЕЕЕЕ")
         return
 
     await message.answer_document(types.InputFile("report.xlsx"))
 
-# ================= НЕСОВПАДЕНИЯ =================
 
-@dp.message_handler(lambda m: m.text == "Показать несовпадения")
+
+@dp.message_handler(lambda m: m.text == "Я нищий червь, прошу покажи мне не совподения")
 async def show_miss(message: types.Message):
 
     misses = user_miss.get(message.from_user.id)
 
     if not misses:
-        await message.answer("Несовпадений нет")
+        await message.answer("А ты хорош, все окей, все принял и вписал")
         return
 
     text = "Не найдено:\n\n" + "\n".join(misses)
     await message.answer(text)
 
-# ================= ЗАПУСК =================
+#Нахуй читаешь мой код?
 
 if __name__ == "__main__":
     executor.start_polling(dp, skip_updates=True)
