@@ -1,55 +1,66 @@
 import logging
 from aiogram import Bot, Dispatcher, types
-from aiogram.types import ReplyKeyboardMarkup, KeyboardButton, InputFile
+from aiogram.types import ReplyKeyboardMarkup
 from aiogram.utils import executor
 from openpyxl import load_workbook
 from parser import parse_inventory, find_similar
+import os
 
-TOKEN = "8464230833:AAHuVdH301Oh2vNEplUpYPHlWLYtlQEBZzk"
+TOKEN = "ВСТАВЬ_СЮДА_ТОКЕН"
 
 logging.basicConfig(level=logging.INFO)
 
 bot = Bot(token=TOKEN)
 dp = Dispatcher(bot)
 
-state_users = {}
-miss_data = {}
+user_state = {}
+user_miss = {}
 
+# ================= КНОПКИ =================
 
+keyboard = ReplyKeyboardMarkup(resize_keyboard=True)
+keyboard.add("Загрузить таблицу программы")
+keyboard.add("Получить отчет")
+keyboard.add("Показать несовпадения")
 
-markup = ReplyKeyboardMarkup(resize_keyboard=True)
-markup.add("Загрузить таблицу программы")
-markup.add("Получить отчет")
-markup.add("Показать несовпадения")
+# ================= START =================
 
-
-
-@dp.message_handler(commands=["start"])
+@dp.message_handler(commands=['start'])
 async def start(message: types.Message):
     await message.answer(
         "Привет. Я бот учета.\nВыбери действие:",
-        reply_markup=markup
+        reply_markup=keyboard
     )
 
-
+# ================= КНОПКА ЗАГРУЗКИ =================
 
 @dp.message_handler(lambda m: m.text == "Загрузить таблицу программы")
-async def request_file(message: types.Message):
-    state_users[message.from_user.id] = "waiting_program"
-    await message.answer("Отправьте таблицу из программы (xlsx)")
+async def request_program(message: types.Message):
+    user_state[message.from_user.id] = "waiting_program"
+    await message.answer("Отправьте Excel файл (.xlsx) из программы")
 
+# ================= ПРИЁМ ФАЙЛА =================
 
-
-@dp.message_handler(content_types=types.ContentType.DOCUMENT)
+@dp.message_handler(content_types=['document'])
 async def handle_excel(message: types.Message):
 
-    user_state = state_users.get(message.from_user.id)
-
-    if user_state != "waiting_program":
+    if user_state.get(message.from_user.id) != "waiting_program":
         return
 
-    file = await bot.get_file(message.document.file_id)
+    document = message.document
+
+    # ❗ ВТОРАЯ ВОЗМОЖНАЯ ПРИЧИНА — ФАЙЛ НЕ ТОГО ФОРМАТА
+    if not document.file_name.endswith(".xlsx"):
+        await message.answer("Нужен файл формата .xlsx")
+        return
+
+    file = await bot.get_file(document.file_id)
     await bot.download_file(file.file_path, "program.xlsx")
+
+    # ❗ ЕСЛИ НЕТ tabl0.xlsx — создаём ошибку понятную
+    if not os.path.exists("tabl0.xlsx"):
+        await message.answer("Ошибка: tabl0.xlsx отсутствует в проекте")
+        return
 
     base_wb = load_workbook("tabl0.xlsx")
     base_ws = base_wb.active
@@ -59,25 +70,28 @@ async def handle_excel(message: types.Message):
 
     program_data = {}
 
-    for row in range(2, prog_ws.max_row + 1):
-        name = str(prog_ws[f"A{row}"].value).lower()
-        qty = prog_ws[f"B{row}"].value or 0
-        program_data[name] = qty
+    # ❗ ЧИСТИМ НАЗВАНИЯ (ОБЯЗАТЕЛЬНО)
+    for row in prog_ws.iter_rows(min_row=1, values_only=True):
+        if row[0] and row[1]:
+            name = str(row[0]).strip().lower()
+            qty = row[1]
+            program_data[name] = qty
 
-    for row in range(2, base_ws.max_row + 1):
-        product_name = str(base_ws[f"A{row}"].value).lower()
+    for row in base_ws.iter_rows(min_row=2):
+        product_name = str(row[0].value).strip().lower()
+
         if product_name in program_data:
-            base_ws[f"B{row}"] = program_data[product_name]
+            row[1].value = program_data[product_name]
 
     base_wb.save("work.xlsx")
 
-    state_users[message.from_user.id] = "waiting_fact"
+    user_state[message.from_user.id] = "waiting_fact"
 
-    await message.answer("Таблица принята.\nТеперь отправь фактические остатки списком.")
+    await message.answer("Файл принят.\nТеперь отправьте фактические остатки списком.")
 
+# ================= ПРИЁМ ФАКТА =================
 
-
-@dp.message_handler(lambda message: state_users.get(message.from_user.id) == "waiting_fact")
+@dp.message_handler(lambda m: user_state.get(m.from_user.id) == "waiting_fact")
 async def handle_fact(message: types.Message):
 
     data = parse_inventory(message.text)
@@ -85,10 +99,10 @@ async def handle_fact(message: types.Message):
     wb = load_workbook("work.xlsx")
     ws = wb.active
 
-    table_products = []
-
-    for row in range(2, ws.max_row + 1):
-        table_products.append(str(ws[f"A{row}"].value).lower())
+    table_products = [
+        str(row[0].value).strip().lower()
+        for row in ws.iter_rows(min_row=2)
+    ]
 
     misses = []
 
@@ -96,8 +110,9 @@ async def handle_fact(message: types.Message):
 
         found_row = None
 
-        for row in range(2, ws.max_row + 1):
-            product_name = str(ws[f"A{row}"].value).lower()
+        for row in ws.iter_rows(min_row=2):
+            product_name = str(row[0].value).strip().lower()
+
             if name == product_name:
                 found_row = row
                 break
@@ -105,49 +120,51 @@ async def handle_fact(message: types.Message):
         if not found_row:
             similar = find_similar(name, table_products)
             if similar:
-                for row in range(2, ws.max_row + 1):
-                    if str(ws[f"A{row}"].value).lower() == similar:
+                for row in ws.iter_rows(min_row=2):
+                    if str(row[0].value).strip().lower() == similar:
                         found_row = row
                         break
 
         if found_row:
-            ws[f"C{found_row}"] = qty
-            plan = ws[f"B{found_row}"].value or 0
-            ws[f"D{found_row}"] = plan - qty
+            found_row[2].value = qty
+            plan = found_row[1].value or 0
+            found_row[3].value = plan - qty
         else:
             misses.append(name)
 
     wb.save("report.xlsx")
 
-    miss_data[message.from_user.id] = misses
-    state_users[message.from_user.id] = None
+    user_miss[message.from_user.id] = misses
+    user_state[message.from_user.id] = None
 
-    await message.answer("Факт принят. Нажмите 'Получить отчет'")
+    await message.answer("Факт принят.\nНажмите 'Получить отчет'")
 
+# ================= ОТЧЕТ =================
 
-
-@dp.message_handler(lambda message: message.text == "Получить отчет")
+@dp.message_handler(lambda m: m.text == "Получить отчет")
 async def send_report(message: types.Message):
-    try:
-        await message.answer_document(InputFile("report.xlsx"))
-    except:
-        await message.answer("Сначала загрузите таблицу.")
 
+    if not os.path.exists("report.xlsx"):
+        await message.answer("Сначала загрузите таблицу и введите факт")
+        return
 
+    await message.answer_document(types.InputFile("report.xlsx"))
 
-@dp.message_handler(lambda message: message.text == "Показать несовпадения")
+# ================= НЕСОВПАДЕНИЯ =================
+
+@dp.message_handler(lambda m: m.text == "Показать несовпадения")
 async def show_miss(message: types.Message):
 
-    misses = miss_data.get(message.from_user.id)
+    misses = user_miss.get(message.from_user.id)
 
     if not misses:
-        await message.answer("Несовпадений нет.")
+        await message.answer("Несовпадений нет")
         return
 
     text = "Не найдено:\n\n" + "\n".join(misses)
     await message.answer(text)
 
-
+# ================= ЗАПУСК =================
 
 if __name__ == "__main__":
     executor.start_polling(dp, skip_updates=True)
