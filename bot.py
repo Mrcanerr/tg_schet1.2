@@ -6,7 +6,7 @@ from openpyxl import load_workbook
 from parser import parse_inventory, find_similar
 import os
 
-TOKEN = "8464230833:AAHuVdH301Oh2vNEplUpYPHlWLYtlQEBZzk"
+TOKEN = "ВСТАВЬ_СЮДА_ТОКЕН"
 
 logging.basicConfig(level=logging.INFO)
 
@@ -21,23 +21,23 @@ user_miss = {}
 keyboard = ReplyKeyboardMarkup(resize_keyboard=True)
 keyboard.add("Загрузить таблицу программы")
 keyboard.add("Получить отчет")
-keyboard.add("Я еблан - покажи несовподения")
+keyboard.add("Показать несовпадения")
 
 
 
 @dp.message_handler(commands=['start'])
 async def start(message: types.Message):
     await message.answer(
-        "Привет. Я бот учета.\nВыбери действие уёбище:",
+        "Привет",
         reply_markup=keyboard
     )
 
 
 
-@dp.message_handler(lambda m: m.text == "Пожалуйста о господин примите мою петицию")
+@dp.message_handler(lambda m: m.text == "Загрузить таблицу программы")
 async def request_program(message: types.Message):
     user_state[message.from_user.id] = "waiting_program"
-    await message.answer("Отправь Excel файл (.xlsx) из программы чернь")
+    await message.answer("Отправьте Excel файл (.xlsx) из программы")
 
 
 
@@ -51,7 +51,7 @@ async def handle_excel(message: types.Message):
 
     
     if not document.file_name.endswith(".xlsx"):
-        await message.answer("еболай проверь .xlsx")
+        await message.answer("Нужен файл формата .xlsx")
         return
 
     file = await bot.get_file(document.file_id)
@@ -59,7 +59,7 @@ async def handle_excel(message: types.Message):
 
     
     if not os.path.exists("tabl0.xlsx"):
-        await message.answer("Ошибка: мать сдохла")
+        await message.answer("Ошибка: tabl0.xlsx отсутствует в проекте")
         return
 
     base_wb = load_workbook("tabl0.xlsx")
@@ -87,7 +87,7 @@ async def handle_excel(message: types.Message):
 
     user_state[message.from_user.id] = "waiting_fact"
 
-    await message.answer("Ага, вон че\nТеперь факт пиши")
+    await message.answer("Файл принят.\nТеперь отправьте фактические остатки списком.")
 
 
 
@@ -137,7 +137,7 @@ async def handle_fact(message: types.Message):
     user_miss[message.from_user.id] = misses
     user_state[message.from_user.id] = None
 
-    await message.answer("Факт принят.\nПолучай отчет чернь")
+    await message.answer("Факт принят.\nНажмите 'Получить отчет'")
 
 
 
@@ -145,26 +145,27 @@ async def handle_fact(message: types.Message):
 async def send_report(message: types.Message):
 
     if not os.path.exists("report.xlsx"):
-        await message.answer("ЕБЛАНИЩЕЕЕЕЕЕЕЕЕЕЕЕЕЕЕ")
+        await message.answer("Сначала загрузите таблицу и введите факт")
         return
 
     await message.answer_document(types.InputFile("report.xlsx"))
 
 
 
-@dp.message_handler(lambda m: m.text == "Я нищий червь, прошу покажи мне не совподения")
+@dp.message_handler(lambda m: m.text == "Показать несовпадения")
 async def show_miss(message: types.Message):
 
     misses = user_miss.get(message.from_user.id)
 
     if not misses:
-        await message.answer("А ты хорош, все окей, все принял и вписал")
+        await message.answer("Несовпадений нет")
         return
 
     text = "Не найдено:\n\n" + "\n".join(misses)
     await message.answer(text)
 
-#Нахуй читаешь мой код?
+
 
 if __name__ == "__main__":
     executor.start_polling(dp, skip_updates=True)
+
