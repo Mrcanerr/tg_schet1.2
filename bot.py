@@ -6,7 +6,7 @@ from openpyxl import load_workbook
 from parser import parse_inventory, find_similar
 import os
 
-TOKEN = "ВСТАВЬ_СЮДА_ТОКЕН"
+TOKEN = "8464230833:AAHuVdH301Oh2vNEplUpYPHlWLYtlQEBZzk"
 
 logging.basicConfig(level=logging.INFO)
 
