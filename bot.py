@@ -128,7 +128,7 @@ async def handle_fact(message: types.Message):
         if found_row:
             found_row[2].value = qty
             plan = found_row[1].value or 0
-            found_row[3].value = plan - qty
+            found_row[3].value = qty - plan
         else:
             misses.append(name)
 
